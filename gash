@@ -1,0 +1,50 @@
+#!/bin/python3
+
+import requests
+import json
+from collections import namedtuple
+from time import sleep
+import subprocess
+
+API_KEY = "" # Your GroupMe API Key
+BOT_ID = "" # The hexadecimal id assigned to your bot
+BOT_NAME = "" # The name of the bot
+GROUP_ID = "" # The id of the bot's group
+
+def post(text, bot_id=BOT_ID):
+    """Posts a message as a bot to the bot's group on GroupMe"""
+    base_url = "https://api.groupme.com/v3/bots/post"
+    data = { "bot_id": bot_id, "text": text}
+    requests.post(base_url, data)
+
+def get_last_message(group_id=GROUP_ID, api_key=API_KEY):
+    """Gets a named tuple representing the last message sent in the specified group.
+    The tuple has the properties "id" for the message id, "text" for the message text,
+    and "user" for the username of the user that sent the message."""
+    base_url = "https://api.groupme.com/v3/groups/" + GROUP_ID + "/messages"
+    data = { "limit": 1, "token": api_key }
+    response = requests.get(base_url, params=data)
+    print(response.text)
+    response_json = json.loads(response.text)
+    Message = namedtuple("Message", "id text user")
+    message_json = response_json["response"]["messages"][0]
+    return Message(message_json["id"], message_json["text"], message_json["name"])
+
+def respond_to_user_posts(post_handler, interval=60, ignored_users=[BOT_NAME]):
+    """Endlessly check for new posts, pausing between checks. If a new message is posted by
+    someone not in the list of ignored users, call the provided callback with the message text.
+    NOTE: If multiple posts are sent in an interval, only the last post will responded to."""
+    last_message_id = get_last_message().id
+    while True:
+        sleep(interval)
+        message = get_last_message()
+        if message.id != last_message_id and message.user not in ignored_users:
+            last_message_id = message.id
+            post_handler(message.text)
+
+def execute_command_and_post_output(command):
+    """Execute a shell command and post the standard output to GroupMe."""
+    post(subprocess.Popen(command, shell=True, stdout=subprocess.PIPE).stdout.read())
+            
+respond_to_user_posts(execute_command_and_post_output, 60)
+        
